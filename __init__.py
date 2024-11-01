@@ -1,0 +1,280 @@
+#  jack_midi_recorder/__init__.py
+#
+#  Copyright 2024 liyang <liyang@veronica>
+
+import logging, threading
+import numpy as np
+from jack import Client, Port, Status, JackError, CallbackExit, STOPPED, ROLLING, STARTING, NETSTARTING
+
+
+class MIDIRecorder:
+
+	# state constants:
+	INACTIVE	= 0
+	PLAYING		= 1
+	RECORDING	= 2
+	FREEWHEEL	= 8
+
+	BUFFER_SIZE	= 2097152
+
+	msgtype	= np.dtype([
+		('frame', np.uint32),
+		('offset', np.uint32),
+		('data', np.uint8, (3,))
+	])
+
+	def __init__(self, client_name):
+		self.client_name = client_name
+		self.state = self.INACTIVE
+		self.ports = []
+		self.in_ports = {}
+		self.out_ports = {}
+		self.client = Client(self.client_name, no_start_server=True)
+		self.finished_playing_event = threading.Event()
+		self.__real_process_callback = self.null_process_callback
+		self.client.set_blocksize_callback(self.blocksize_callback)
+		self.client.set_samplerate_callback(self.samplerate_callback)
+		self.client.set_process_callback(self.process_callback)
+		self.client.set_shutdown_callback(self.shutdown_callback)
+		self.client.set_xrun_callback(self.xrun_callback)
+		self.client.activate()
+		self.client.get_ports()
+		self.set_port_list([])
+
+	def first_input_port(self):
+		"""
+		Here for testing from the command line
+		"""
+		return self.in_ports[self.ports[0]]
+
+	def set_port_list(self, ports):
+		old_ports = set(self.ports)
+		new_ports = set(ports)
+		self.ports = ports
+		for port in old_ports - new_ports:
+			self.in_ports[port].unregister()
+			self.out_ports[port].unregister()
+		for port in new_ports - old_ports:
+			self.in_ports[port] = self.client.midi_inports.register('port_%d_in' % port)
+			self.out_ports[port] = self.client.midi_outports.register('port_%d_out' % port)
+		self.buffers = { port: np.zeros(self.BUFFER_SIZE, self.msgtype) for port in self.ports }
+		self.buf_idx = { port: 0 for port in self.ports }
+
+	def connect_input_port(self, port_number, other_port_name):
+		#logging.debug("MIDIRecorder connect input port {0} to {1}".format(port_number, other_port_name))
+		if not self.in_ports[port_number].is_connected_to(other_port_name):
+			self.in_ports[port_number].connect(other_port_name)
+
+	def connect_output_port(self, port_number, other_port_name):
+		#logging.debug("MIDIRecorder connect output port {0} to {1}".format(port_number, other_port_name))
+		if not self.out_ports[port_number].is_connected_to(other_port_name):
+			self.out_ports[port_number].connect(other_port_name)
+
+	def stop(self):
+		self.__real_process_callback = self.null_process_callback
+		self.state = self.INACTIVE
+
+	def event_count(self):
+		return sum(self.buf_idx.values())
+
+	def event_counts(self):
+		return [ 0 if self.buffers[port] is None else self.buf_idx[port] for port in self.ports ]
+
+	def events(self):
+		return [ None if self.buffers[port] is None else self.buffers[port][ : self.buf_idx[port] ] for ports in self.ports ]
+
+	def ready_to_record(self):
+		for port in self.ports:
+			if self.in_ports[port].number_of_connections == 0:
+				return False
+		return True
+
+	def ready_to_play(self):
+		return self.event_count() > 0
+
+	def record(self):
+		logging.debug('RECORD')
+		for port in self.ports:
+			self.buf_idx[port] = 0
+		self.__frame = 0
+		self.__real_process_callback = self.record_process_callback
+		self.state = self.RECORDING
+
+	def stop(self):
+		logging.debug('STOP')
+		self.__real_process_callback = self.null_process_callback
+		if self.state == self.RECORDING:
+			first_frame = min([ self.buffers[port][0]['frame'] for port in self.ports ])
+			for port in self.ports:
+				self.buffers[port]['frame'] -= first_frame
+			self.__last_frame = self.__frame - first_frame
+		self.state = self.INACTIVE
+
+	def save_to(self, filename):
+		"""
+		Save the midi events recorded in a raw numpy format.
+
+		No not include port numbers in the filename; the port number is automatically
+		appended. One file is saved for each port recorded.
+		"""
+		for port in self.ports:
+			npfilename = "%s-%d.npy" % (filename, port)
+			logging.debug('Saving port {0} data to "{1}"'.format(port, npfilename))
+			np.save(npfilename, self.buffers[port])
+
+	def load_from(self, filename):
+		"""
+		Load midi events saved with "save_to()".
+
+		No not include port numbers in the filename; the port number is automatically
+		appended. One file is loaded for each port defined. If a file is not found with
+		the appropriate port numbers, an exception is raised.
+
+		For example:
+			r = MIDIRecorder([1, 4, 6])
+			r.load_from("file")
+		... will search for these files in the current directory:
+			file-1.npy
+			file-4.npy
+			file-6.npy
+		"""
+		for port in self.ports:
+			npfilename = "%s-%d.npy" % (filename, port)
+			logging.debug('Loading port {0} data from "{1}"'.format(port, npfilename))
+			self.buffers[port] = np.load(npfilename)
+
+	def play(self):
+		logging.debug('PLAY')
+		for port in self.ports:
+			if self.buffers[port] is None:
+				raise Exception("Empty record buffer")
+			self.buf_idx[port] = 0
+		self.finished_playing_event.clear()
+		self.state = self.PLAYING
+		self.__frame = 0
+		self.__real_process_callback = self.play_process_callback
+		self.finished_playing_event.wait()
+		self.stop()
+
+	def null_process_callback(self, frames):
+		pass
+
+	def record_process_callback(self, frames):
+		for port in self.ports:
+			for offset, indata in self.in_ports[port].incoming_midi_events():
+				if len(indata) == 3:
+					self.buffers[port][self.buf_idx[port]] = (self.__frame, offset, indata)
+					self.buf_idx[port] += 1
+		self.__frame += 1
+
+	def play_process_callback(self, frames):
+		for port in self.ports:
+			self.out_ports[port].clear_buffer()
+			while self.__frame == self.buffers[port][self.buf_idx[port]]['frame']:
+				self.out_ports[port].write_midi_event(self.buffers[port][self.buf_idx[port]]['offset'], self.buffers[port][self.buf_idx[port]]['data'])
+				self.buf_idx[port] += 1
+		if self.__frame == self.__last_frame:
+			self.finished_playing_event.set()
+		self.__frame += 1
+
+	# -----------------------
+	# JACK callbacks
+
+	def blocksize_callback(self, blocksize):
+		"""
+		The argument blocksize is the new buffer size. The callback is supposed to
+		raise CallbackExit on error.
+		"""
+		if self.state != self.INACTIVE:
+			raise CallbackExit
+
+	def samplerate_callback(self, samplerate):
+		"""
+		The argument samplerate is the new engine sample rate. The callback is supposed
+		to raise CallbackExit on error.
+		"""
+		if self.state != self.INACTIVE:
+			raise CallbackExit
+
+	def process_callback(self, frames):
+		try:
+			self.__real_process_callback(frames)
+		except Exception as e:
+			logging.error(e)
+			raise CallbackExit
+
+	def shutdown_callback(self, status, reason):
+		"""
+		The argument status is of type jack.Status.
+		"""
+		if self.state != self.INACTIVE:
+			self.stop_everything()
+			raise JackShutdownError
+
+	def xrun_callback(self, delayed_usecs):
+		"""
+		The callback argument is the delay in microseconds due to the most recent XRUN
+		occurrence. The callback is supposed to raise CallbackExit on error.
+		"""
+		#logging.debug('xrun: delayed %.2f microseconds' % delayed_usecs)
+		pass
+
+
+class JackShutdownError(Exception):
+
+	pass
+
+
+if __name__ == "__main__":
+	import sys, os
+	from tempfile import mkstemp
+	logging.basicConfig(
+		stream=sys.stdout, level=logging.DEBUG,
+		format="[%(filename)24s:%(lineno)3d] %(levelname)-8s %(message)s"
+	)
+
+	rec = MIDIRecorder('midirec')
+	rec.set_port_list([1])
+	for p in rec.client.get_ports(is_midi=True, is_output=True, is_terminal=True):
+		if p.name.lower().find('through') < 0:
+			print(f"Connecting to {p.name}");
+			try:
+				rec.first_input_port().connect(p.name)
+				break
+			except Exception as e:
+				print(e)
+
+	print('#' * 80)
+	print('Recording ... press Return to quit')
+	print('#' * 80)
+	rec.record()
+	try:
+		input()
+	except KeyboardInterrupt:
+		print("Interrupted")
+	rec.stop()
+
+	print('#' * 80)
+	print('Ready to play ... press Return')
+	print('#' * 80)
+	try:
+		input()
+		rec.play()
+	except KeyboardInterrupt:
+		print("Interrupted")
+
+	_, filename = mkstemp()
+	print('#' * 80)
+	print('Saving')
+	print('#' * 80)
+	rec.save_to(filename)
+
+	print('#' * 80)
+	print('Loading')
+	print('#' * 80)
+	rec.load_from(filename)
+
+	os.unlink(filename)
+
+
+#  end jack_midi_recorder/__init__.py
