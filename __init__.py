@@ -230,7 +230,7 @@ if __name__ == "__main__":
 	from tempfile import mkstemp
 	logging.basicConfig(
 		stream=sys.stdout, level=logging.DEBUG,
-		format="[%(filename)24s:%(lineno)3d] %(levelname)-8s %(message)s"
+		format="[%(filename)24s:%(lineno)-4d] %(levelname)-8s %(message)s"
 	)
 
 	rec = MIDIRecorder('midirec')
