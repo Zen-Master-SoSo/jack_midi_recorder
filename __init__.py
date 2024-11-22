@@ -229,8 +229,8 @@ if __name__ == "__main__":
 	import sys, os
 	from tempfile import mkstemp
 	logging.basicConfig(
-		stream=sys.stdout, level=logging.DEBUG,
-		format="[%(filename)24s:%(lineno)-4d] %(levelname)-8s %(message)s"
+		stream = sys.stdout, level = logging.DEBUG,
+		format = "[%(filename)24s:%(lineno)-4d] %(levelname)-8s %(message)s"
 	)
 
 	rec = MIDIRecorder('midirec')
