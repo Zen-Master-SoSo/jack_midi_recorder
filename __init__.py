@@ -84,10 +84,7 @@ class MIDIRecorder:
 		return [ None if self.buffers[port] is None else self.buffers[port][ : self.buf_idx[port] ] for ports in self.ports ]
 
 	def ready_to_record(self):
-		for port in self.ports:
-			if self.in_ports[port].number_of_connections == 0:
-				return False
-		return True
+		return all(port.number_of_connections > 0 for port in self.in_ports.values())
 
 	def ready_to_play(self):
 		return self.event_count() > 0
