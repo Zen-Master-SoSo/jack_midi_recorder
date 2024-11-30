@@ -1,7 +1,7 @@
 #  jack_midi_recorder/qt.py
 #
 #  Copyright 2024 liyang <liyang@veronica>
-
+#
 from jack_midi_recorder import MIDIRecorder
 from PyQt5.QtCore import QObject, pyqtSignal
 

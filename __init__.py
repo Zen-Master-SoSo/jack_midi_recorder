@@ -1,7 +1,7 @@
 #  jack_midi_recorder/__init__.py
 #
 #  Copyright 2024 liyang <liyang@veronica>
-
+#
 import logging, threading
 import numpy as np
 from jack import Client, Port, Status, JackError, CallbackExit, STOPPED, ROLLING, STARTING, NETSTARTING
