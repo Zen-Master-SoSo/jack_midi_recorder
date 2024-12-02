@@ -3,6 +3,7 @@
 #  Copyright 2024 liyang <liyang@veronica>
 #
 import logging, threading
+from good_logging import log_error
 import numpy as np
 from jack import Client, Port, Status, JackError, CallbackExit, STOPPED, ROLLING, STARTING, NETSTARTING
 
@@ -61,12 +62,10 @@ class MIDIRecorder:
 		self.buf_idx = { port: 0 for port in self.ports }
 
 	def connect_input_port(self, port_number, other_port_name):
-		#logging.debug("MIDIRecorder connect input port {0} to {1}".format(port_number, other_port_name))
 		if not self.in_ports[port_number].is_connected_to(other_port_name):
 			self.in_ports[port_number].connect(other_port_name)
 
 	def connect_output_port(self, port_number, other_port_name):
-		#logging.debug("MIDIRecorder connect output port {0} to {1}".format(port_number, other_port_name))
 		if not self.out_ports[port_number].is_connected_to(other_port_name):
 			self.out_ports[port_number].connect(other_port_name)
 
@@ -116,7 +115,7 @@ class MIDIRecorder:
 		"""
 		for port in self.ports:
 			npfilename = "%s-%d.npy" % (filename, port)
-			logging.debug('Saving port {0} data to "{1}"'.format(port, npfilename))
+			logging.debug('Saving port %s data to "%s"', port, npfilename)
 			np.save(npfilename, self.buffers[port])
 
 	def load_from(self, filename):
@@ -137,7 +136,7 @@ class MIDIRecorder:
 		"""
 		for port in self.ports:
 			npfilename = "%s-%d.npy" % (filename, port)
-			logging.debug('Loading port {0} data from "{1}"'.format(port, npfilename))
+			logging.debug('Loading port %s data from "%s"', port, npfilename)
 			self.buffers[port] = np.load(npfilename)
 
 	def play(self):
