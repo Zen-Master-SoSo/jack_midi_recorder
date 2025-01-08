@@ -8,11 +8,11 @@ from PyQt5.QtCore import QObject, pyqtSignal
 
 class QtMIDIRecorder(MIDIRecorder, QObject):
 
-	sig_PlayFinished = pyqtSignal()
+	sig_play_finished = pyqtSignal()
 
 	def play(self):
 		super().play()
-		self.sig_PlayFinished.emit()
+		self.sig_play_finished.emit()
 
 	def __init__(self, client_name):
 		QObject.__init__(self)
