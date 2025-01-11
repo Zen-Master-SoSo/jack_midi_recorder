@@ -42,6 +42,10 @@ class MIDIRecorder:
 		self.client.get_ports()
 		self.set_port_list([])
 
+	def shutdown(self):
+		self.stop()
+		self.client.deactivate()
+
 	def first_input_port(self):
 		"""
 		Here for testing from the command line
@@ -68,10 +72,6 @@ class MIDIRecorder:
 	def connect_output_port(self, port_number, other_port_name):
 		if not self.out_ports[port_number].is_connected_to(other_port_name):
 			self.out_ports[port_number].connect(other_port_name)
-
-	def stop(self):
-		self.__real_process_callback = self.null_process_callback
-		self.state = self.INACTIVE
 
 	def event_count(self):
 		return sum(self.buf_idx.values())
@@ -204,7 +204,6 @@ class MIDIRecorder:
 		The argument status is of type jack.Status.
 		"""
 		if self.state != self.INACTIVE:
-			self.stop_everything()
 			raise JackShutdownError
 
 	def xrun_callback(self, delayed_usecs):
