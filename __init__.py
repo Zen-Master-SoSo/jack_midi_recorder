@@ -25,13 +25,12 @@ class MIDIRecorder:
 		('data', np.uint8, (3,))
 	])
 
-	def __init__(self, client_name):
-		self.client_name = client_name
+	def __init__(self, client_name = 'midi-recorder'):
 		self.state = self.INACTIVE
 		self.ports = []
 		self.in_ports = {}
 		self.out_ports = {}
-		self.client = Client(self.client_name, no_start_server=True)
+		self.client = Client(client_name, no_start_server=True)
 		self.finished_playing_event = threading.Event()
 		self.__real_process_callback = self.null_process_callback
 		self.client.set_blocksize_callback(self.blocksize_callback)
@@ -228,15 +227,22 @@ class JackShutdownError(Exception):
 	pass
 
 
-if __name__ == "__main__":
+def main():
 	import sys, os
+	from jack import JackError
 	from tempfile import mkstemp
+
 	logging.basicConfig(
 		stream = sys.stdout, level = logging.DEBUG,
 		format = "[%(filename)24s:%(lineno)-4d] %(levelname)-8s %(message)s"
 	)
 
-	rec = MIDIRecorder('midirec')
+	try:
+		rec = MIDIRecorder()
+	except JackError:
+		print('Could not connect to JACK server. Is it running?')
+		return 1
+
 	rec.set_port_list([1])
 	for p in rec.client.get_ports(is_midi=True, is_output=True, is_terminal=True):
 		if p.name.lower().find('through') < 0:
@@ -278,6 +284,12 @@ if __name__ == "__main__":
 	rec.load_from(filename)
 
 	os.unlink(filename)
+	return 0
+
+
+if __name__ == "__main__":
+	import sys
+	sys.exit(main())
 
 
 #  end jack_midi_recorder/__init__.py
