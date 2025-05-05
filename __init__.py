@@ -5,7 +5,8 @@
 import logging, threading
 from good_logging import log_error
 import numpy as np
-from jack import Client, Port, Status, JackError, CallbackExit, STOPPED, ROLLING, STARTING, NETSTARTING
+from jack import Client, Port, Status, JackError, CallbackExit, \
+				STOPPED, ROLLING, STARTING, NETSTARTING
 
 
 class MIDIRecorder:
@@ -60,8 +61,8 @@ class MIDIRecorder:
 			self.in_ports[port].unregister()
 			self.out_ports[port].unregister()
 		for port in new_ports - old_ports:
-			self.in_ports[port] = self.client.midi_inports.register('port_%d_in' % port)
-			self.out_ports[port] = self.client.midi_outports.register('port_%d_out' % port)
+			self.in_ports[port] = self.client.midi_inports.register(f'port_{port}_in')
+			self.out_ports[port] = self.client.midi_outports.register(f'port_{port}_out')
 		self.buffers = { port: np.zeros(self.BUFFER_SIZE, self.msgtype) for port in self.ports }
 		self.buf_idx = { port: 0 for port in self.ports }
 
@@ -77,10 +78,14 @@ class MIDIRecorder:
 		return sum(self.buf_idx.values())
 
 	def event_counts(self):
-		return [ 0 if self.buffers[port] is None else self.buf_idx[port] for port in self.ports ]
+		return [ 0 if self.buffers[port] is None \
+			else self.buf_idx[port] \
+			for port in self.ports ]
 
 	def events(self):
-		return [ None if self.buffers[port] is None else self.buffers[port][ : self.buf_idx[port] ] for ports in self.ports ]
+		return [ None if self.buffers[port] is None \
+			else self.buffers[port][ : self.buf_idx[port] ] \
+			for port in self.ports ]
 
 	def ready_to_record(self):
 		return all(port.number_of_connections > 0 for port in self.in_ports.values())
@@ -114,7 +119,7 @@ class MIDIRecorder:
 		appended. One file is saved for each port recorded.
 		"""
 		for port in self.ports:
-			npfilename = "%s-%d.npy" % (filename, port)
+			npfilename = f'{filename}-{port}.npy'
 			logging.debug('Saving port %s data to "%s"', port, npfilename)
 			np.save(npfilename, self.buffers[port])
 
@@ -135,7 +140,7 @@ class MIDIRecorder:
 			file-6.npy
 		"""
 		for port in self.ports:
-			npfilename = "%s-%d.npy" % (filename, port)
+			npfilename = f'{filename}-{port}.npy'
 			logging.debug('Loading port %s data from "%s"', port, npfilename)
 			self.buffers[port] = np.load(npfilename)
 
@@ -167,7 +172,10 @@ class MIDIRecorder:
 		for port in self.ports:
 			self.out_ports[port].clear_buffer()
 			while self.__frame == self.buffers[port][self.buf_idx[port]]['frame']:
-				self.out_ports[port].write_midi_event(self.buffers[port][self.buf_idx[port]]['offset'], self.buffers[port][self.buf_idx[port]]['data'])
+				self.out_ports[port].write_midi_event(
+					self.buffers[port][self.buf_idx[port]]['offset'],
+					self.buffers[port][self.buf_idx[port]]['data']
+				)
 				self.buf_idx[port] += 1
 		if self.__frame == self.__last_frame:
 			self.finished_playing_event.set()
@@ -197,7 +205,7 @@ class MIDIRecorder:
 			self.__real_process_callback(frames)
 		except Exception as e:
 			logging.error(e)
-			raise CallbackExit
+			raise CallbackExit from e
 
 	def shutdown_callback(self, status, reason):
 		"""
@@ -232,7 +240,7 @@ if __name__ == "__main__":
 	rec.set_port_list([1])
 	for p in rec.client.get_ports(is_midi=True, is_output=True, is_terminal=True):
 		if p.name.lower().find('through') < 0:
-			print(f"Connecting to {p.name}");
+			print(f"Connecting to {p.name}")
 			try:
 				rec.first_input_port().connect(p.name)
 				break
