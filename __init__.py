@@ -233,7 +233,7 @@ def main():
 	from tempfile import mkstemp
 
 	logging.basicConfig(
-		stream = sys.stdout, level = logging.DEBUG,
+		level = logging.DEBUG,
 		format = "[%(filename)24s:%(lineno)-4d] %(levelname)-8s %(message)s"
 	)
 
