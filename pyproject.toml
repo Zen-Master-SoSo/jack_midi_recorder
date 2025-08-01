@@ -19,9 +19,6 @@ qt = ["PyQt5", "soso_qt_extras"]
 [project.urls]
 Home = "https://github.com/Zen-Master-SoSo/jack_midi_recorder"
 
-[project.scripts]
-jack-midi-looper = "jack_midi_recorder.gui:main"
-
 [build-system]
 requires = ["flit_core >=3.2,<4"]
 build-backend = "flit_core.buildapi"
