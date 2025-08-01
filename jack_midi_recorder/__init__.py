@@ -2,14 +2,37 @@
 #
 #  Copyright 2024 liyang <liyang@veronica>
 #
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+#  MA 02110-1301, USA.
+#
+"""
+Basic implementation of MIDI event recording / playback.
+"""
 import logging, threading
 from log_soso import log_error
 import numpy as np
 from jack import Client, Port, Status, JackError, CallbackExit, \
 				STOPPED, ROLLING, STARTING, NETSTARTING
 
+__version__ = "1.0.0"
+
 
 class MIDIRecorder:
+	"""
+	A class which records incoming MIDI events, saves/loads as raw numpy data, and plays back recorded events.
+	"""
 
 	# state constants:
 	INACTIVE	= 0
@@ -33,6 +56,8 @@ class MIDIRecorder:
 		self.client = Client(client_name, no_start_server=True)
 		self.finished_playing_event = threading.Event()
 		self.__real_process_callback = self.null_process_callback
+		self.__frame = None
+		self.__last_frame = None
 		self.client.set_blocksize_callback(self.blocksize_callback)
 		self.client.set_samplerate_callback(self.samplerate_callback)
 		self.client.set_process_callback(self.process_callback)
@@ -147,7 +172,7 @@ class MIDIRecorder:
 		logging.debug('PLAY')
 		for port in self.ports:
 			if self.buffers[port] is None:
-				raise Exception("Empty record buffer")
+				raise RuntimeError("Empty record buffer")
 			self.buf_idx[port] = 0
 		self.finished_playing_event.clear()
 		self.state = self.PLAYING
@@ -159,7 +184,7 @@ class MIDIRecorder:
 	def null_process_callback(self, frames):
 		pass
 
-	def record_process_callback(self, frames):
+	def record_process_callback(self, _):
 		for port in self.ports:
 			for offset, indata in self.in_ports[port].incoming_midi_events():
 				if len(indata) == 3:
@@ -167,7 +192,7 @@ class MIDIRecorder:
 					self.buf_idx[port] += 1
 		self.__frame += 1
 
-	def play_process_callback(self, frames):
+	def play_process_callback(self, _):
 		for port in self.ports:
 			self.out_ports[port].clear_buffer()
 			while self.__frame == self.buffers[port][self.buf_idx[port]]['frame']:
@@ -183,7 +208,7 @@ class MIDIRecorder:
 	# -----------------------
 	# JACK callbacks
 
-	def blocksize_callback(self, blocksize):
+	def blocksize_callback(self, _):
 		"""
 		The argument blocksize is the new buffer size. The callback is supposed to
 		raise CallbackExit on error.
@@ -191,7 +216,7 @@ class MIDIRecorder:
 		if self.state != self.INACTIVE:
 			raise CallbackExit
 
-	def samplerate_callback(self, samplerate):
+	def samplerate_callback(self, _):
 		"""
 		The argument samplerate is the new engine sample rate. The callback is supposed
 		to raise CallbackExit on error.
@@ -206,7 +231,7 @@ class MIDIRecorder:
 			logging.error(e)
 			raise CallbackExit from e
 
-	def shutdown_callback(self, status, reason):
+	def shutdown_callback(self, *_):
 		"""
 		The argument status is of type jack.Status.
 		"""
@@ -218,78 +243,12 @@ class MIDIRecorder:
 		The callback argument is the delay in microseconds due to the most recent XRUN
 		occurrence. The callback is supposed to raise CallbackExit on error.
 		"""
-		#logging.debug('xrun: delayed %.2f microseconds' % delayed_usecs)
 		pass
 
 
 class JackShutdownError(Exception):
 
 	pass
-
-
-def main():
-	import sys, os
-	from jack import JackError
-	from tempfile import mkstemp
-
-	logging.basicConfig(
-		level = logging.DEBUG,
-		format = "[%(filename)24s:%(lineno)-4d] %(levelname)-8s %(message)s"
-	)
-
-	try:
-		rec = MIDIRecorder()
-	except JackError:
-		print('Could not connect to JACK server. Is it running?')
-		return 1
-
-	rec.set_port_list([1])
-	for p in rec.client.get_ports(is_midi=True, is_output=True, is_terminal=True):
-		if p.name.lower().find('through') < 0:
-			print(f"Connecting to {p.name}")
-			try:
-				rec.first_input_port().connect(p.name)
-				break
-			except Exception as e:
-				print(e)
-
-	print('#' * 80)
-	print('Recording ... press Return to quit')
-	print('#' * 80)
-	rec.record()
-	try:
-		input()
-	except KeyboardInterrupt:
-		print("Interrupted")
-	rec.stop()
-
-	print('#' * 80)
-	print('Ready to play ... press Return')
-	print('#' * 80)
-	try:
-		input()
-		rec.play()
-	except KeyboardInterrupt:
-		print("Interrupted")
-
-	_, filename = mkstemp()
-	print('#' * 80)
-	print('Saving')
-	print('#' * 80)
-	rec.save_to(filename)
-
-	print('#' * 80)
-	print('Loading')
-	print('#' * 80)
-	rec.load_from(filename)
-
-	os.unlink(filename)
-	return 0
-
-
-if __name__ == "__main__":
-	import sys
-	sys.exit(main())
 
 
 #  end jack_midi_recorder/__init__.py
