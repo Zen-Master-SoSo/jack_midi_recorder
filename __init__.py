@@ -3,7 +3,7 @@
 #  Copyright 2024 liyang <liyang@veronica>
 #
 import logging, threading
-from good_logging import log_error
+from log_soso import log_error
 import numpy as np
 from jack import Client, Port, Status, JackError, CallbackExit, \
 				STOPPED, ROLLING, STARTING, NETSTARTING
