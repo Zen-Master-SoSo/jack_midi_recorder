@@ -11,7 +11,7 @@ classifiers = [
 	"Topic :: Multimedia :: Sound/Audio :: MIDI"
 ]
 dynamic = ["version", "description"]
-dependencies = ["JACK-Client", "numpy", "log_soso"]
+dependencies = ["JACK-Client", "numpy"]
 
 [project.optional-dependencies]
 qt = ["PyQt5", "soso_qt_extras >= 1.2.0"]

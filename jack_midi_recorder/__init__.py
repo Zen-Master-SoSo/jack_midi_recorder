@@ -1,6 +1,6 @@
 #  jack_midi_recorder/__init__.py
 #
-#  Copyright 2024 liyang <liyang@veronica>
+#  Copyright 2024 Leon Dionne <ldionne@dridesign.sh.cn>
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -21,7 +21,6 @@
 Basic implementation of MIDI event recording / playback.
 """
 import logging, threading
-from log_soso import log_error
 import numpy as np
 from jack import Client, Port, Status, JackError, CallbackExit, \
 				STOPPED, ROLLING, STARTING, NETSTARTING
