@@ -25,7 +25,7 @@ import numpy as np
 from jack import Client, Port, Status, JackError, CallbackExit, \
 				STOPPED, ROLLING, STARTING, NETSTARTING
 
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 
 
 class MIDIRecorder:
